@@ -9,12 +9,29 @@ Use this skill when:
 - User wants to compare workload performance across time periods
 - User needs metrics by Product Category or use_case
 
+## Before You Start - ASK THE USER
+
+**REQUIRED:** Before running any queries, ask the user for:
+
+1. **Start period** - e.g., "Feb 2025" (the older/baseline month)
+2. **End period** - e.g., "Jan 2026" (the newer/comparison month)
+
+Example prompt:
+> "What time periods would you like to compare? Please provide:
+> - Start month (baseline): e.g., Feb 2025
+> - End month (comparison): e.g., Jan 2026"
+
+If user says "year in review" without specifying, suggest comparing the same month one year apart (e.g., Feb 2025 → Jan 2026 for FY25 review).
+
+---
+
 ## Quick Start
 
-1. Run analysis hierarchy (Level 1 → Level 2 → Level 3)
-2. Include SPI Execution Index as separate metric
-3. Save results to `results/YYYY-MM-DD_period_filter/` folder
-4. Optionally run recurring-only analysis
+1. **Ask for periods** (see above)
+2. Run analysis hierarchy (Level 1 → Level 2 → Level 3)
+3. Include SPI Execution Index as separate metric
+4. Save results to `results/YYYY-MM-DD_period_filter/` folder
+5. Optionally run recurring-only analysis (note: recurring data starts Mar 2025)
 
 ---
 
