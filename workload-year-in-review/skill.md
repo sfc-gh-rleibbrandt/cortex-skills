@@ -129,17 +129,29 @@ period1 AS (SELECT * FROM metrics WHERE month = '{{start_month}}'),
 period2 AS (SELECT * FROM metrics WHERE month = '{{end_month}}')
 SELECT 
     'All Snowflake' AS scope,
+    -- Raw Jobs
     p1.total_jobs AS "{{start_month_label}} Jobs",
     p2.total_jobs AS "{{end_month_label}} Jobs",
     ROUND((p2.total_jobs - p1.total_jobs) * 100.0 / NULLIF(p1.total_jobs, 0), 1) AS "Jobs Growth %",
+    ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
+    -- Raw Credits
+    ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
+    ROUND(p2.total_credits, 0) AS "{{end_month_label}} Credits",
+    -- Credits per 1K Jobs (efficiency)
     ROUND(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 4) AS "{{start_month_label}} Cr/1K",
     ROUND(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 4) AS "{{end_month_label}} Cr/1K",
     ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0) - p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0)) 
           / NULLIF(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Credits Δ %",
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
+    -- Execution time
     ROUND(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) AS "{{start_month_label}} Avg ms",
     ROUND(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0) AS "{{end_month_label}} Avg ms",
     ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0) - p2.total_dur_ms / NULLIF(p2.total_jobs, 0)) 
-          / NULLIF(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Exec Δ %"
+          / NULLIF(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Exec Δ %",
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
+    -- Jobs per Credit (composite metric)
+    ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
+          ((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0)), 2) AS "Jobs/Credit X"
 FROM period1 p1, period2 p2
 ```
 
@@ -147,30 +159,96 @@ FROM period1 p1, period2 p2
 
 ## Level 2: By Product Category
 
-Add to WHERE clause:
 ```sql
-AND r.feature_vector:"Product Category"::STRING IS NOT NULL
+WITH metrics AS (
+    SELECT 
+        DATE_TRUNC('month', r.ds) AS month,
+        r.feature_vector:"Product Category"::STRING AS product_category,
+        SUM(r.jobs) AS total_jobs,
+        SUM(r.total_credits) AS total_credits,
+        SUM(r.dur_xp_executing) AS total_dur_ms
+    FROM snowscience.job_analytics.job_feature_daily_account_rollup r
+    JOIN snowscience.dimensions.dim_accounts_history a 
+      ON r.deployment = a.snowflake_deployment 
+      AND r.account_id = a.snowflake_account_id 
+      AND r.ds = a.general_date
+    WHERE r.ds >= '{{start_date}}' AND r.ds < '{{end_date}}'
+      AND DATE_TRUNC('month', r.ds) IN ('{{start_month}}', '{{end_month}}')
+      AND r.feature_vector:"Product Category"::STRING IS NOT NULL
+      AND a.snowflake_account_type <> 'Internal'
+      AND a.agreement_type NOT IN ('Trial', 'Partner Access')
+    GROUP BY 1, 2
+),
+p1 AS (SELECT * FROM metrics WHERE month = '{{start_month}}'),
+p2 AS (SELECT * FROM metrics WHERE month = '{{end_month}}')
+SELECT 
+    COALESCE(p1.product_category, p2.product_category) AS product_category,
+    -- Raw Jobs
+    p1.total_jobs AS "{{start_month_label}} Jobs",
+    p2.total_jobs AS "{{end_month_label}} Jobs",
+    ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
+    -- Raw Credits
+    ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
+    ROUND(p2.total_credits, 0) AS "{{end_month_label}} Credits",
+    -- Credits per 1K Jobs (efficiency)
+    ROUND(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 4) AS "{{start_month_label}} Cr/1K",
+    ROUND(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 4) AS "{{end_month_label}} Cr/1K",
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
+    -- Execution time
+    ROUND(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) AS "{{start_month_label}} ms",
+    ROUND(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0) AS "{{end_month_label}} ms",
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
+    -- Jobs per Credit (composite)
+    ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
+          ((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0)), 2) AS "Jobs/Credit X"
+FROM p1
+FULL OUTER JOIN p2 ON p1.product_category = p2.product_category
+ORDER BY p2.total_jobs DESC
 ```
-
-Add to GROUP BY and SELECT:
-```sql
-r.feature_vector:"Product Category"::STRING AS product_category
-```
-
-Use FULL OUTER JOIN on `product_category` to handle categories that appear in only one period.
 
 ---
 
 ## Level 3a: Analytics by Use Case
 
-Add to WHERE clause:
 ```sql
-AND r.feature_vector:"Product Category"::STRING = 'Analytics'
-```
-
-Add to GROUP BY and SELECT:
-```sql
-r.feature_vector['Analytics']['use_case']::STRING AS use_case
+WITH metrics AS (
+    SELECT 
+        DATE_TRUNC('month', r.ds) AS month,
+        r.feature_vector['Analytics']['use_case']::STRING AS use_case,
+        SUM(r.jobs) AS total_jobs,
+        SUM(r.total_credits) AS total_credits,
+        SUM(r.dur_xp_executing) AS total_dur_ms
+    FROM snowscience.job_analytics.job_feature_daily_account_rollup r
+    JOIN snowscience.dimensions.dim_accounts_history a 
+      ON r.deployment = a.snowflake_deployment 
+      AND r.account_id = a.snowflake_account_id 
+      AND r.ds = a.general_date
+    WHERE r.ds >= '{{start_date}}' AND r.ds < '{{end_date}}'
+      AND DATE_TRUNC('month', r.ds) IN ('{{start_month}}', '{{end_month}}')
+      AND r.feature_vector:"Product Category"::STRING = 'Analytics'
+      AND a.snowflake_account_type <> 'Internal'
+      AND a.agreement_type NOT IN ('Trial', 'Partner Access')
+    GROUP BY 1, 2
+),
+p1 AS (SELECT * FROM metrics WHERE month = '{{start_month}}'),
+p2 AS (SELECT * FROM metrics WHERE month = '{{end_month}}')
+SELECT 
+    COALESCE(p1.use_case, p2.use_case) AS use_case,
+    -- Raw Jobs
+    p1.total_jobs AS "{{start_month_label}} Jobs",
+    p2.total_jobs AS "{{end_month_label}} Jobs",
+    ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
+    -- Raw Credits  
+    ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
+    ROUND(p2.total_credits, 0) AS "{{end_month_label}} Credits",
+    -- Efficiency metrics
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
+    ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
+          ((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0)), 2) AS "Jobs/Credit X"
+FROM p1
+FULL OUTER JOIN p2 ON p1.use_case = p2.use_case
+ORDER BY p2.total_jobs DESC
 ```
 
 **Analytics Use Cases:**
@@ -184,14 +262,45 @@ r.feature_vector['Analytics']['use_case']::STRING AS use_case
 
 ## Level 3b: Data Engineering by Use Case
 
-Add to WHERE clause:
 ```sql
-AND r.feature_vector:"Product Category"::STRING = 'Data Engineering'
-```
-
-Add to GROUP BY and SELECT:
-```sql
-r.feature_vector['Data Engineering']['use_case']::STRING AS use_case
+WITH metrics AS (
+    SELECT 
+        DATE_TRUNC('month', r.ds) AS month,
+        r.feature_vector['Data Engineering']['use_case']::STRING AS use_case,
+        SUM(r.jobs) AS total_jobs,
+        SUM(r.total_credits) AS total_credits,
+        SUM(r.dur_xp_executing) AS total_dur_ms
+    FROM snowscience.job_analytics.job_feature_daily_account_rollup r
+    JOIN snowscience.dimensions.dim_accounts_history a 
+      ON r.deployment = a.snowflake_deployment 
+      AND r.account_id = a.snowflake_account_id 
+      AND r.ds = a.general_date
+    WHERE r.ds >= '{{start_date}}' AND r.ds < '{{end_date}}'
+      AND DATE_TRUNC('month', r.ds) IN ('{{start_month}}', '{{end_month}}')
+      AND r.feature_vector:"Product Category"::STRING = 'Data Engineering'
+      AND a.snowflake_account_type <> 'Internal'
+      AND a.agreement_type NOT IN ('Trial', 'Partner Access')
+    GROUP BY 1, 2
+),
+p1 AS (SELECT * FROM metrics WHERE month = '{{start_month}}'),
+p2 AS (SELECT * FROM metrics WHERE month = '{{end_month}}')
+SELECT 
+    COALESCE(p1.use_case, p2.use_case) AS use_case,
+    -- Raw Jobs
+    p1.total_jobs AS "{{start_month_label}} Jobs",
+    p2.total_jobs AS "{{end_month_label}} Jobs",
+    ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
+    -- Raw Credits  
+    ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
+    ROUND(p2.total_credits, 0) AS "{{end_month_label}} Credits",
+    -- Efficiency metrics
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
+    ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
+          ((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0)), 2) AS "Jobs/Credit X"
+FROM p1
+FULL OUTER JOIN p2 ON p1.use_case = p2.use_case
+ORDER BY p2.total_jobs DESC
 ```
 
 **Data Engineering Use Cases:**
@@ -249,6 +358,38 @@ AND r.feature_vector:is_recurrent::STRING = 'true'
 | **Jobs Growth %** | `(new - old) / old × 100` | Growth (not improvement) |
 | **SPI Point Δ** | `ABS(new) - ABS(old)` | Positive = improved |
 | **SPI % Improvement** | `Point Δ / ABS(old) × 100` | Relative improvement |
+
+---
+
+## X Multiplier Calculations
+
+After running queries, calculate and present "X times" multipliers for executive-friendly summaries:
+
+| Metric | Formula | Example |
+|--------|---------|---------|
+| **Jobs X** | `new_jobs / old_jobs` | 222.8B / 98.1B = **2.27x** |
+| **Credits X** | `old_cr_per_1k / new_cr_per_1k` | 1.149 / 0.693 = **1.66x** cheaper |
+| **Speed X** | `old_ms / new_ms` | 1516 / 946 = **1.60x** faster |
+| **Jobs/Credit X** | `Jobs X × Credits X` | 2.27 × 1.66 = **3.77x** more jobs per credit |
+
+### Presenting X Multipliers
+
+Show a combined table with all multipliers:
+
+```
+┌─────────────────────────┬──────────┬────────────┬───────────┬─────────────────┐
+│ Category                │ Jobs X   │ Credits X  │ Speed X   │  Jobs/Credit X  │
+├─────────────────────────┼──────────┼────────────┼───────────┼─────────────────┤
+│ All Snowflake           │   2.27x  │    1.66x   │   1.60x   │     3.77x       │
+│ ...                     │   ...    │    ...     │   ...     │     ...         │
+└─────────────────────────┴──────────┴────────────┴───────────┴─────────────────┘
+```
+
+**Interpretation:**
+- `Jobs X` = Growth (how many more jobs)
+- `Credits X` = Efficiency (how much cheaper per job)
+- `Speed X` = Performance (how much faster)
+- `Jobs/Credit X` = **Best overall metric** - total productivity gain per credit spent
 
 ---
 
