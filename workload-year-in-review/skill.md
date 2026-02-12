@@ -186,6 +186,7 @@ SELECT
     -- Raw Jobs
     p1.total_jobs AS "{{start_month_label}} Jobs",
     p2.total_jobs AS "{{end_month_label}} Jobs",
+    ROUND((p2.total_jobs - p1.total_jobs) * 100.0 / NULLIF(p1.total_jobs, 0), 1) AS "Growth %",
     ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
     -- Raw Credits
     ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
@@ -193,10 +194,14 @@ SELECT
     -- Credits per 1K Jobs (efficiency)
     ROUND(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 4) AS "{{start_month_label}} Cr/1K",
     ROUND(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 4) AS "{{end_month_label}} Cr/1K",
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0) - p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0)) 
+          / NULLIF(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Credits Δ %",
     ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
     -- Execution time
     ROUND(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) AS "{{start_month_label}} ms",
     ROUND(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0) AS "{{end_month_label}} ms",
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0) - p2.total_dur_ms / NULLIF(p2.total_jobs, 0)) 
+          / NULLIF(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Exec Δ %",
     ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
     -- Jobs per Credit (composite)
     ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
@@ -237,13 +242,20 @@ SELECT
     -- Raw Jobs
     p1.total_jobs AS "{{start_month_label}} Jobs",
     p2.total_jobs AS "{{end_month_label}} Jobs",
+    ROUND((p2.total_jobs - p1.total_jobs) * 100.0 / NULLIF(p1.total_jobs, 0), 1) AS "Growth %",
     ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
     -- Raw Credits  
     ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
     ROUND(p2.total_credits, 0) AS "{{end_month_label}} Credits",
-    -- Efficiency metrics
+    -- Credits efficiency
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0) - p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0)) 
+          / NULLIF(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Credits Δ %",
     ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
+    -- Execution time
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0) - p2.total_dur_ms / NULLIF(p2.total_jobs, 0)) 
+          / NULLIF(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Exec Δ %",
     ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
+    -- Jobs per Credit (composite)
     ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
           ((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0)), 2) AS "Jobs/Credit X"
 FROM p1
@@ -289,13 +301,20 @@ SELECT
     -- Raw Jobs
     p1.total_jobs AS "{{start_month_label}} Jobs",
     p2.total_jobs AS "{{end_month_label}} Jobs",
+    ROUND((p2.total_jobs - p1.total_jobs) * 100.0 / NULLIF(p1.total_jobs, 0), 1) AS "Growth %",
     ROUND(p2.total_jobs / NULLIF(p1.total_jobs, 0), 2) AS "Jobs X",
     -- Raw Credits  
     ROUND(p1.total_credits, 0) AS "{{start_month_label}} Credits",
     ROUND(p2.total_credits, 0) AS "{{end_month_label}} Credits",
-    -- Efficiency metrics
+    -- Credits efficiency
+    ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0) - p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0)) 
+          / NULLIF(p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Credits Δ %",
     ROUND((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0), 2) AS "Credits X",
+    -- Execution time
+    ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0) - p2.total_dur_ms / NULLIF(p2.total_jobs, 0)) 
+          / NULLIF(p1.total_dur_ms / NULLIF(p1.total_jobs, 0), 0) * 100, 1) AS "Exec Δ %",
     ROUND((p1.total_dur_ms / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_dur_ms / NULLIF(p2.total_jobs, 0), 0), 2) AS "Speed X",
+    -- Jobs per Credit (composite)
     ROUND((p2.total_jobs / NULLIF(p1.total_jobs, 0)) * 
           ((p1.total_credits * 1000 / NULLIF(p1.total_jobs, 0)) / NULLIF(p2.total_credits * 1000 / NULLIF(p2.total_jobs, 0), 0)), 2) AS "Jobs/Credit X"
 FROM p1
